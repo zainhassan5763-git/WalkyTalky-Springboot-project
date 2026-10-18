@@ -1,0 +1,368 @@
+____STEPS NEED TO MAKE PROJECT WOTH NEW WAY
+
+1) now we dont need any application.prop file we use application.yml instead
+2) also we implement new dependecny name flyway
+3) also we make new way to use database schema usin flyway we write sql related code in it
+walkytalky/
+└── src/
+    └── main/
+        └── resources/
+            └── db/
+                └── migration/          ← make this one
+                    └── V1__baseline_schema.sql (in this we write sql realtd code for all data in diff tables)
+4) after that we use data tables and write data what we use in these files explanation is below
+# Flyway & SQL Basics — Notes
+
+                        Everything from the `V1__baseline_schema.sql` walkthrough, explained.
+                        Keep this. You'll refer back to it more than you expect.
+
+                        ---
+
+                        ## 1. What Flyway Actually Is
+
+                        Flyway is a migration tool. It owns your database schema.
+
+                        Without it, you set `ddl-auto: update` and Hibernate creates/alters tables
+                        by reading your entity classes. That works for practice projects.
+
+                        With Flyway, **you write the schema yourself in SQL files**, and Flyway runs
+                        them in order exactly once each.
+
+                        ### Why bother?
+
+                        | | Hibernate `update` | Flyway |
+                        |---|---|---|
+                        | Who creates tables | Hibernate guesses from entities | You decide, deliberately |
+                        | Change a column in month 2 | Hibernate silently alters it | You write `V3__change_email_column.sql` |
+                        | Can you see what changed? | No | Yes — it's in git |
+                        | Teammate gets same schema | Maybe, if their guess matches | Guaranteed |
+                        | Production safety | Dangerous | Safe |
+
+                        **Version control for your database.** That's the whole idea.
+
+                        ---
+
+                        ## 2. The Filename Convention — This Is Not Optional
+
+                        ```
+                        V1__baseline_schema.sql
+                        │ │└──────────────────┘
+                        │ │      description (any words, underscore separated)
+                        │ └─── double underscore
+                        └───── V = version
+                        ```
+
+                        - `V` = version marker
+                        - `1` = version number (V1, V2, V3...)
+                        - `__` = **double underscore, always**
+                        - rest = description
+
+                        Flyway sorts by the number and runs each file **exactly once**, recording it
+                        in a `flyway_schema_history` table.
+
+                        ### The rule everyone breaks once
+
+                        > **Never edit a migration file after it has been run.**
+
+                        Flyway stores a checksum of each file. If you edit `V1__` after running it,
+                        the checksum mismatches and the app **refuses to start**.
+
+                        The correct move is a new file:
+
+                        ```
+                        V1__baseline_schema.sql   ← already ran, never touch
+                        V2__add_email_verified.sql   ← new changes go here
+                        ```
+
+                        This is a feature, not a limitation. Your schema history becomes auditable.
+
+                        ---
+
+                        ## 3. The Folder Location
+
+                        ```
+                        src/main/resources/db/migration/
+                        ```
+
+                        - `resources/` = files that get bundled into the jar
+                        - `db/migration/` = the **default** Flyway location (no config needed)
+
+                        Spring Boot picks this folder up automatically. If you changed the location
+                        in `application.yml` (`spring.flyway.locations`), it looks there instead.
+
+                        ---
+
+                        ## 4. Reading The Schema Line By Line
+
+                        ### `id BIGINT NOT NULL AUTO_INCREMENT,`
+
+                        | Part | Meaning |
+                        |---|---|
+                        | `BIGINT` | 64-bit integer. Holds up to 9.2 quintillion. Java type: `Long` |
+                        | `NOT NULL` | Cannot be NULL. Always required |
+                        | `AUTO_INCREMENT` | MySQL assigns this value automatically on INSERT |
+
+                        **Java mapping:** `private Long id;`
+
+                        Use `Long` (capital L) in Java, not `long`. `Long` is an object and can be
+                        `null`; `long` is a primitive and can't be. JPA prefers the wrapper.
+
+                        ### `email VARCHAR(255) NOT NULL,`
+
+                        `VARCHAR(255)` = a text column, max 255 characters.
+
+                        **Why 255?** It's the MySQL default and it's a safe, universally-supported
+                        width. Indexes on `VARCHAR` columns have size limits in some setups — 255 is
+                        comfortably inside every one of them.
+
+                        **⚠️ Never use `TEXT` for an indexed column.**
+
+                        MySQL cannot index a `TEXT` column without specifying a prefix length
+                        (`TEXT(100)`). If you write `email TEXT`, then try to add a unique constraint,
+                        the migration **fails** with a confusing error about key length.
+
+                        This is one of the most common MySQL beginner mistakes. Use `VARCHAR(255)`.
+
+                        ### `password_hash VARCHAR(255) NOT NULL,`
+
+                        Note the name: **`password_hash`**, not `password`.
+
+                        You never store a raw password. You store the output of BCrypt — a 60-char
+                        hash. The column name makes it impossible for someone reading your schema to
+                        think you're storing plaintext.
+
+                        `VARCHAR(255)` gives headroom (BCrypt is 60 chars) if you ever switch to
+                        argon2 (~95 chars).
+
+                        ### `DEFAULT 'ACTIVE',`
+
+                        If your Java code doesn't set this field, MySQL fills it in.
+
+                        Your entity can then just have:
+
+                        ```java
+                        private String status = "ACTIVE";   // or leave null and trust the DB default
+                        ```
+
+                        Slight safety net — a row can never end up in a null status.
+
+                        ### `DEFAULT CURRENT_TIMESTAMP(6)`
+
+                        `(6)` = microsecond precision (6 digits after the decimal).
+
+                        MySQL sets this to "now" automatically on INSERT. You never write it in Java.
+
+                        ### `ON UPDATE CURRENT_TIMESTAMP(6)`
+
+                        MySQL automatically refreshes `updated_at` whenever the row changes.
+
+                        This means: **you don't need to write update logic in Java.** No
+                        `entity.setUpdatedAt(Instant.now())`. The database handles it. Fewer bugs.
+
+                        ### `version INT NOT NULL DEFAULT 0,`
+
+                        **Optimistic locking.** Here's how it works:
+
+                        ```
+                        Request A reads:  UPDATE projects SET name='A', version=version+1
+                                        WHERE id=5 AND version=3        ← 1 row changed ✓
+
+                        Request B reads:  UPDATE projects SET name='B', version=version+1
+                                        WHERE id=5 AND version=3        ← 0 rows changed ✗
+                        ```
+
+                        B's update matched nothing because A already bumped the version. Spring Data
+                        JPA translates that into an `OptimisticLockingFailureException`, which you
+                        handle as HTTP **409 Conflict** — "someone else changed this, try again."
+
+                        Without this column, last-write-wins: B silently overwrites A and A never
+                        knows. That class of bug is genuinely hard to find in production.
+
+                        **Java mapping:** `@Version` annotation, and you never set it yourself.
+
+                        ### `ENGINE = InnoDB`
+
+                        InnoDB is MySQL's real storage engine. It supports:
+                        - Foreign keys
+                        - Transactions (ACID)
+                        - Row-level locking
+
+                        It has been the default since MySQL 5.5. State it explicitly anyway — costs
+                        nothing, makes intent clear.
+
+                        ### `DEFAULT CHARSET = utf8mb4`
+
+                        Full Unicode, **including emoji**. The old `utf8` charset only supports the
+                        Basic Multilingual Plane and silently truncates emoji and some scripts.
+
+                        One user puts an emoji in their name, column truncates, you get a bug report
+                        that says "the emoji disappears." `utf8mb4` prevents it. Never use `utf8`.
+
+                        ---
+
+                        ## 5. Keys And Indexes
+
+                        ### `PRIMARY KEY (id)`
+
+                        Uniquely identifies each row. The database enforces uniqueness.
+
+                        ### `UNIQUE KEY uk_users_email (email)`
+
+                        A unique constraint — no two rows can share this value. `uk_` is a naming
+                        convention (unique + table + column). Conventions like this are why senior
+                        codebases are readable at a glance.
+
+                        You want this on `email`. Without it, two signups with the same email both
+                        succeed and now nobody can log in reliably.
+
+                        ### `KEY idx_membership_user (user_id)`
+
+                        A regular (non-unique) index.
+
+                        **Always index every foreign key.** MySQL is dramatically slower on
+                        unindexed join/filter columns and will not warn you — it just quietly gets
+                        slower as your data grows.
+
+                        The naming convention `idx_<table>_<column>` keeps things scannable.
+
+                        ### `UNIQUE KEY uk_membership (user_id, tenant_id)`
+
+                        A **composite** unique constraint across two columns together.
+
+                        Means: this pair can't repeat. So a person can belong to five tenants, but
+                        not twice to the same one.
+
+                        Note it's `uk_membership`, not `uk_memberships` — convention names it after
+                        the *concept*, not the table. Both are fine; just pick one and stay consistent.
+
+                        ---
+
+                        ## 6. Foreign Keys
+
+                        ```sql
+                        CONSTRAINT fk_membership_user
+                            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+                        ```
+
+                        Reads as: "this `user_id` must point to a real row in `users`."
+
+                        `ON DELETE CASCADE` = **if the parent row is deleted, delete this row too.**
+
+                        So deleting a user automatically removes their tenant memberships. Without
+                        this you'd get orphaned rows pointing at a user who no longer exists, and
+                        every query touching them breaks mysteriously.
+
+                        Related options:
+                        - `ON DELETE SET NULL` — set this column to NULL instead (for optional relations)
+                        - `RESTRICT` — refuse the delete (default, safest for important relations)
+
+                        **Ordering matters.** `users` must be created before `tenant_memberships`,
+                        since the latter references the former. Flyway runs files in order, and within
+                        a file, statements top to bottom.
+
+                        ---
+
+                        ## 7. `CHAR(36)` For UUIDs
+
+                        ```sql
+                        tenant_id CHAR(36) NOT NULL,
+                        ```
+
+                        A UUID as a string. `36` = 32 hex characters + 4 hyphens.
+
+                        **Why not `BINARY(16)`?** That would store the UUID in 16 bytes instead of 36
+                        — roughly 55% less storage. But:
+                        - Unreadable in the database GUI
+                        - Painful to debug queries
+                        - Ends up costing you hours
+
+                        This is a deliberate trade of a small amount of space for a lot of sanity.
+                        Take it. Optimization comes after you understand what's happening.
+
+                        ---
+
+                        ## 8. Java ↔ SQL Type Mapping
+
+                        This is the table you'll need in about ten minutes:
+
+                        | SQL | Java | Notes |
+                        |---|---|---|
+                        | `BIGINT` | `Long` | Always the wrapper, never `long` |
+                        | `INT` | `Integer` | |
+                        | `VARCHAR(n)` | `String` | |
+                        | `CHAR(36)` | `String` | or `UUID` with a converter |
+                        | `BOOLEAN` | `Boolean` | MySQL `BOOLEAN` is really `TINYINT(1)` |
+                        | `DATETIME(6)` | `LocalDateTime` | Preferred over legacy `Date` |
+                        | `DECIMAL(10,2)` | `BigDecimal` | For money. **Never `double`** |
+
+                        **Your `ddl-auto: validate` setting enforces this.** If your entity says
+                        `String` but the column is `INT`, the app won't start and will name the exact
+                        field that's wrong. That's the whole point of `validate` — it turns a silent
+                        runtime bug into a startup error.
+
+                        ---
+
+                        ## 9. Timestamps: Three Different Kinds
+
+                        Easy to confuse. Keep them straight:
+
+                        | Kind | Where it lives | Set by |
+                        |---|---|---|
+                        | Row timestamps | `created_at`, `updated_at` columns | MySQL, automatically |
+                        | Token `iat`/`exp` | Inside the JWT payload | Your `JwtService`, in Java |
+                        | Refresh token expiry | `expires_at` column | Your Java code, explicitly |
+
+                        The first is what you wrote in `V1__`. The other two arrive in the auth phase.
+
+                        ---
+
+                        ## 10. The Design Decision: Which Tables Get `tenant_id`
+
+                        This is the most important choice in the project.
+
+                        | Table | `tenant_id`? | Reasoning |
+                        |---|---|---|
+                        | `users` | **No** | A user is a person. Global identity, belongs to no single company |
+                        | `tenants` | **No** | A tenant is the company. It can't belong to itself |
+                        | `tenant_memberships` | **Yes** | The join. This is what makes it multi-tenant |
+
+                        **The reason:** one person, five client companies, five different roles.
+                        That scenario is the entire reason multi-tenancy exists.
+
+                        If `users` had a `tenant_id`, that person would have to be duplicated per
+                        company, with five different email addresses and five passwords to remember.
+                        Broken.
+
+                        `users` and `tenants` are the two deliberate exceptions. Everything else in
+                        this project — projects, tasks, comments, audit logs — gets a `tenant_id`.
+
+                        ---
+
+                        ## 11. Common Errors You Might Hit
+
+                        | Error | Cause | Fix |
+                        |---|---|---|
+                        | `Table 'users' already exists` | Migration already ran | Drop + recreate the database |
+                        | `Specified key was too long` | Index on `TEXT` | Use `VARCHAR(255)` |
+                        | `Cannot add foreign key constraint` | Parent table doesn't exist yet | Create tables in dependency order |
+                        | `Unknown database 'walkytalky'` | Database not created | `CREATE DATABASE walkytalky;` |
+                        | Flyway checksum mismatch | You edited a run migration | Add a new `V2__` file |
+                        | Nothing happens, no Flyway log | `flyway.enabled` not true | Check `application.yml` |
+                        | `Public Key Retrieval is not allowed` | MySQL 8 auth caching | Add `allowPublicKeyRetrieval=true` to the JDBC URL |
+                        | `The server time zone value is unrecognized` | MySQL timezone vs JVM | Add `serverTimezone=UTC` to the JDBC URL |
+
+                        ---
+
+                        ## 12. Summary Checklist
+
+                        - [ ] Filename: `V<n>__<description>.sql`, double underscore
+                        - [ ] Never edit a file after it ran
+                        - [ ] `VARCHAR(255)` for indexed text, never `TEXT`
+                        - [ ] `CHAR(36)` for UUIDs
+                        - [ ] Index every foreign key
+                        - [ ] `ENGINE=InnoDB`, `CHARSET=utf8mb4`
+                        - [ ] `version INT` for optimistic locking
+                        - [ ] `users` and `tenants` get **no** `tenant_id` — that's intentional
+                        - [ ] `ON DELETE CASCADE` on memberships
+
+5)

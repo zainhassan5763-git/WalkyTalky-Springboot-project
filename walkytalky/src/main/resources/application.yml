@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: walkytalky
+
+  datasource:
+    url: jdbc:mysql://${MYSQLHOST:localhost}:${MYSQLPORT:3306}/${MYSQLDATABASE:WalkyTalkyDATA}?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: ${MYSQLUSER:root}
+    password: ${MYSQLPASSWORD:${DB_PASSWORD:zain102@sql}}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+jwt.secret: "${JWT_SECRET:fbdndigndrkguyouiyuetwbhfghfjgj5364687697895u6egby7769b5y4c3tc55vv555555557b66756b876n876htfgb}"

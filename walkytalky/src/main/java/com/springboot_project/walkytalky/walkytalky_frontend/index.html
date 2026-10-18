@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WalkyTalky - Collaboration Platform</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- SockJS and STOMP for Real-time WebSockets -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+</head>
+<body>
+
+    <!-- AUTHENTICATION CONTAINER (Shown when logged out) -->
+    <div id="auth-container" class="auth-wrapper">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h2>WalkyTalky</h2>
+                <p id="auth-subtitle">Sign in to your workspace</p>
+            </div>
+
+            <!-- Toggle Tabs -->
+            <div class="auth-tabs">
+                <button id="tab-login" class="tab-btn active" onclick="switchAuthTab('login')">Sign In</button>
+                <button id="tab-signup" class="tab-btn" onclick="switchAuthTab('signup')">Create Account</button>
+            </div>
+
+            <!-- Login Form -->
+            <form id="login-form" class="auth-form">
+                <div class="input-group">
+                    <label>Email Address</label>
+                    <input type="email" id="login-email" placeholder="name@example.com" required>
+                </div>
+                <div class="input-group">
+                    <label>Password</label>
+                    <input type="password" id="login-password" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="primary-btn">Sign In</button>
+            </form>
+
+            <!-- Signup Form (Hidden by default) -->
+            <form id="signup-form" class="auth-form" style="display: none;">
+                <div class="input-group">
+                    <label>Full Name</label>
+                    <input type="text" id="signup-fullname" placeholder="John Doe" required>
+                </div>
+                <div class="input-group">
+                    <label>Email Address</label>
+                    <input type="email" id="signup-email" placeholder="name@example.com" required>
+                </div>
+                <div class="input-group">
+                    <label>Password</label>
+                    <input type="password" id="signup-password" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="primary-btn">Create Account</button>
+            </form>
+            <div id="auth-error" class="auth-error"></div>
+        </div>
+    </div>
+
+    <!-- MAIN APP CONTAINER (Hidden until authenticated) -->
+    <div id="app-container" class="app-container" style="display: none;">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="workspace-header">
+                <h2 id="workspace-name">Workspace</h2>
+                <span id="user-display-name" class="user-badge">Loading...</span>
+            </div>
+            
+            <div class="nav-section">
+                <div class="section-title">
+                    <span>Channels</span>
+                </div>
+                <ul id="channel-list" class="list">
+                    <!-- Dynamic channels populated here -->
+                </ul>
+            </div>
+
+            <!-- ADMIN-ONLY CONTROL PANEL SECTION (Hidden by default, unlocked for ADMIN/OWNER) -->
+            <div id="admin-panel-section" class="nav-section" style="display: none; border-top: 1px solid #334155; padding-top: 12px; margin-top: 12px;">
+                <div class="section-title">
+                    <span style="color: #818cf8; font-weight: bold;">👑 Admin Controls</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                    <input type="text" id="new-channel-name" placeholder="channel-name" style="padding: 6px; font-size: 0.85rem; background: #1e293b; color: white; border: 1px solid #475569; border-radius: 4px;">
+                    <input type="text" id="new-channel-desc" placeholder="Channel description" style="padding: 6px; font-size: 0.85rem; background: #1e293b; color: white; border: 1px solid #475569; border-radius: 4px;">
+                    <button id="create-channel-btn" style="background: #4f46e5; color: white; border: none; padding: 6px; border-radius: 4px; font-size: 0.85rem; cursor: pointer;">Add Channel</button>
+                    <button id="admin-invite-btn" style="background: #334155; color: #cbd5e1; border: none; padding: 6px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; text-align: left;">📋 Copy Workspace Link</button>
+                </div>
+            </div>
+
+            <div class="nav-section">
+                <div class="section-title"><span>Team Members</span></div>
+                <ul id="member-list" class="list">
+                    <!-- Dynamic members populated here -->
+                </ul>
+            </div>
+
+            <div class="sidebar-footer">
+                <button onclick="logout()" class="logout-btn">Sign Out</button>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-main">
+            <header class="chat-header">
+                <h2 id="current-channel-title"># select-channel</h2>
+                <p id="current-channel-desc">Select a channel to start messaging</p>
+            </header>
+
+            <div id="message-container" class="message-container">
+                <!-- Messages populated here -->
+            </div>
+
+            <form id="message-form" class="message-form">
+                <input type="text" id="message-input" placeholder="Type your message..." autocomplete="off" required>
+                <button type="submit">Send</button>
+            </form>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
