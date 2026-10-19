@@ -5,7 +5,8 @@ spring:
   datasource:
     url: jdbc:mysql://${MYSQLHOST:localhost}:${MYSQLPORT:3306}/${MYSQLDATABASE:WalkyTalkyDATA}?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
     username: ${MYSQLUSER:root}
-    password: ${MYSQLPASSWORD:${DB_PASSWORD:zain102@sql}}
+    password: ${MYSQLPASSWORD:${DB_PASSWORD:my password
+    }}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
